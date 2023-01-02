@@ -1,7 +1,7 @@
 package com.example.weatherapi.utils
 
-import android.Content.Context
 import android.content.Context
+
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 
@@ -11,7 +11,7 @@ import android.os.Build
 
 object Constants {
 
-    const val APP_ID: String = "2c50325f427689340a03ff16215d8fc4"
+    const val APP_ID: String = "603dc85d5ec5fcefebd6665c933e8819"
     const val BASE_URL : String = "https://api.openweathermap.org/data/"
     const val METRIC_UNIT :String = "metric"
 

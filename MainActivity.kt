@@ -3,17 +3,22 @@ package com.example.weatherapi
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Dialog
+import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.location.Location
+import android.location.LocationManager
+import android.net.Uri
 import com.example.weatherapi.R
 import android.os.Bundle
 import android.os.Looper
 import android.provider.Settings
 import android.provider.SyncStateContract
 import android.provider.UserDictionary.Words.APP_ID
-import android.telecom.Call
+
 import android.util.Log
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import com.google.android.material.snackbar.Snackbar
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.location.LocationManagerCompat.isLocationEnabled
@@ -22,9 +27,10 @@ import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.navigateUp
 import androidx.navigation.ui.setupActionBarWithNavController
 import com.example.weatherapi.databinding.ActivityMainBinding
-
-import com.example.weatherapi.network.WeatherService
+import com.example.weatherapi.models.WeatherResponse
 import com.example.weatherapi.utils.Constants
+import com.example.weatherapi.network.WeatherService
+
 import com.example.weatherapi.utils.Constants.BASE_URL
 import com.example.weatherapi.utils.Constants.isNetworkAvailable
 import com.google.android.gms.location.*
@@ -35,8 +41,10 @@ import com.karumi.dexter.listener.PermissionRequest
 import com.karumi.dexter.listener.multi.MultiplePermissionsListener
 import kotlinx.android.synthetic.main.activity_main.*
 import retrofit.*
+import retrofit.Call
 import java.text.SimpleDateFormat
 import java.util.*
+//import com.example.weatherapi.models
 
 class MainActivity : AppCompatActivity() {
 
@@ -53,11 +61,11 @@ class MainActivity : AppCompatActivity() {
         //binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(R.layout.activity_main)
 
-        setSupportActionBar(binding.toolbar)
-
-        val navController = findNavController(R.id.nav_host_fragment_content_main2)
-        appBarConfiguration = AppBarConfiguration(navController.graph)
-        setupActionBarWithNavController(navController, appBarConfiguration)
+//        setSupportActionBar(binding.toolbar)
+//
+//        val navController = findNavController(R.id.nav_host_fragment_content_main2)
+//        appBarConfiguration = AppBarConfiguration(navController.graph)
+//        setupActionBarWithNavController(navController, appBarConfiguration)
 //
 //        binding.fab.setOnClickListener { view ->
 //            Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
@@ -67,7 +75,7 @@ class MainActivity : AppCompatActivity() {
         // Initialize the Fused location variable
         mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
-       // if () {//!isLocationEnabled()
+        if (!isLocationEnabled()) {//
             Toast.makeText(
                 this,
                 "Your location provider is turned off. Please turn it on.",
@@ -77,36 +85,36 @@ class MainActivity : AppCompatActivity() {
             // This will redirect you to settings from where you need to turn on the location provider.
             val intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
             startActivity(intent)
-//        } else {
-//            Dexter.withActivity(this)
-//                .withPermissions(
-//                    Manifest.permission.ACCESS_FINE_LOCATION,
-//                    Manifest.permission.ACCESS_COARSE_LOCATION
-//                )
-//                .withListener(object : MultiplePermissionsListener {
-//                    override fun onPermissionsChecked(report: MultiplePermissionsReport?) {
-//                        if (report!!.areAllPermissionsGranted()) {
-//                            requestLocationData()
-//                        }
-//
-//                        if (report.isAnyPermissionPermanentlyDenied) {
-//                            Toast.makeText(
-//                                this@MainActivity,
-//                                "You have denied location permission. Please allow it is mandatory.",
-//                                Toast.LENGTH_SHORT
-//                            ).show()
-//                        }
-//                    }
+        } else {
+            Dexter.withActivity(this)
+                .withPermissions(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+                .withListener(object : MultiplePermissionsListener {
+                    override fun onPermissionsChecked(report: MultiplePermissionsReport?) {
+                        if (report!!.areAllPermissionsGranted()) {
+                            requestLocationData()
+                        }
 
-                //    override fun onPermissionRationaleShouldBeShown(
-                  //      permissions: MutableList<PermissionRequest>?,
-                  //      token: PermissionToken?
-                   // ) {
-                      //  showRationalDialogForPermissions()
-                  //  }
-               // }//)//nSameThread()
-               // .check()
-       // }
+                        if (report.isAnyPermissionPermanentlyDenied) {
+                            Toast.makeText(
+                                this@MainActivity,
+                                "You have denied location permission. Please allow it is mandatory.",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+
+                    override fun onPermissionRationaleShouldBeShown(
+                        permissions: MutableList<PermissionRequest>?,
+                        token: PermissionToken?
+                    ) {
+                        showRationalDialogForPermissions()
+                    }
+                }).onSameThread()
+                .check()
+        }
     }
     /**
      * Function is used to get the temperature unit value.
@@ -119,7 +127,52 @@ class MainActivity : AppCompatActivity() {
         }
         return value
     }
+    /**
+     * A function used to show the alert dialog when the permissions are denied and need to allow it from settings app info.
+     */
+    private fun showRationalDialogForPermissions() {
+        AlertDialog.Builder(this)
+            .setMessage("It Looks like you have turned off permissions required for this feature. It can be enabled under Application Settings")
+            .setPositiveButton(
+                "GO TO SETTINGS"
+            ) { _, _ ->
+                try {
+                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                    val uri = Uri.fromParts("package", packageName, null)
+                    intent.data = uri
+                    startActivity(intent)
+                } catch (e: ActivityNotFoundException) {
+                    e.printStackTrace()
+                }
+            }
+            .setNegativeButton("Cancel") { dialog,
+                                           _ ->
+                dialog.dismiss()
+            }.show()
+    }
+/**
+ * A function which is used to verify that the location or GPS is enable or not of the user's device.
+ */
+private fun isLocationEnabled(): Boolean {
 
+    // This provides access to the system location services.
+    val locationManager: LocationManager =
+        getSystemService(Context.LOCATION_SERVICE) as LocationManager
+    return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) || locationManager.isProviderEnabled(
+        LocationManager.NETWORK_PROVIDER
+    )
+}
+
+private fun showCustomProgressDialog() {
+    mProgressDialog = Dialog(this)
+
+    /*Set the screen content from a layout resource.
+    The resource will be inflated, adding all top-level views to the screen.*/
+    mProgressDialog!!.setContentView(R.layout.dialog_custom_progress)
+
+    //Start the dialog and display it on screen.
+    mProgressDialog!!.show()
+}
     /**
      * The function is used to get the formatted time based on the Format and the LOCALE we pass to it.
      */
@@ -130,6 +183,20 @@ class MainActivity : AppCompatActivity() {
         sdf.timeZone = TimeZone.getDefault()
         return sdf.format(date)
     }
+
+    private val mLocationCallback = object : LocationCallback() {
+        override fun onLocationResult(locationResult: LocationResult) {
+            val mLastLocation: Location = locationResult.lastLocation
+            val latitude = mLastLocation.latitude
+            Log.i("Current Latitude", "$latitude")
+
+            val longitude = mLastLocation.longitude
+            Log.i("Current Longitude", "$longitude")
+
+            getLocationWeatherDetails(latitude, longitude)
+        }
+    }
+
     private fun getLocationWeatherDetails(latitude:Double, longitude:Double)
     {
         //if(SyncStateContract.Constants.isNetworkAvailable(this))
@@ -145,58 +212,58 @@ class MainActivity : AppCompatActivity() {
                 /** An invocation of a Retrofit method that sends a request to a web-server and returns a response.
                  * Here we pass the required param in the service
                  */
-              //  val listCall: Call<WeatherResponse> = service.getWeather(
-                //    latitude, longitude, Constants.METRIC_UNIT, Constants.APP_ID
-           // )
+                val listCall: Call<WeatherResponse> = service.getWeather(
+                    latitude, longitude, Constants.METRIC_UNIT, Constants.APP_ID
+            )
 
             showCustomProgressDialog() // Used to show the progress dialog
 
-            // Callback methods are executed using the Retrofit callback executor.
-//            listCall.enqueue(object : Callback<WeatherResponse> {
-//                @SuppressLint("SetTextI18n")
-//                override fun onResponse(
-//                    response: Response<WeatherResponse>,
-//                    retrofit: Retrofit
-//                ) {
-//
-//                    // Check weather the response is success or not.
-//                    if (response.isSuccess) {
-//
-//                        hideProgressDialog() // Hides the progress dialog
-//
-//                        /** The de-serialized response body of a successful response. */
-//                        val weatherList: WeatherResponse = response.body()
-//                        Log.i("Response Result", "$weatherList")
-//
-//                        // TODO (STEP 6: Call the setup UI method here and pass the response object as a parameter to it to get the individual values.)
-//                        // START
-//                        setupUI(weatherList)
-//                        // END
-//                    } else {
-//                        // If the response is not success then we check the response code.
-//                        val sc = response.code()
-//                        when (sc) {
-//                            400 -> {
-//                                Log.e("Error 400", "Bad Request")
-//                            }
-//                            404 -> {
-//                                Log.e("Error 404", "Not Found")
-//                            }
-//                            else -> {
-//                                Log.e("Error", "Generic Error")
-//                            }
-//                        }
-//                    }
-//                }
-//                override fun onFailure(t: Throwable) {
-//                    hideProgressDialog() // Hides the progress dialog
-//                    Log.e("Errorrrrr", t.message.toString())
-//                }
-//            })
-//        }else{
-//            Toast.makeText(this@MainActivity, "NO internet connection available",
-//            Toast.LENGTH_SHORT)
-//        }
+             //Callback methods are executed using the Retrofit callback executor.
+            listCall.enqueue(object : Callback<WeatherResponse> {
+                @SuppressLint("SetTextI18n")
+                override fun onResponse(
+                    response: Response<WeatherResponse>,
+                    retrofit: Retrofit
+                ) {
+
+                    // Check weather the response is success or not.
+                    if (response.isSuccess) {
+
+                        hideProgressDialog() // Hides the progress dialog
+
+                        /** The de-serialized response body of a successful response. */
+                        val weatherList: WeatherResponse = response.body()
+                        Log.i("Response Result", "$weatherList")
+
+                        // TODO (STEP 6: Call the setup UI method here and pass the response object as a parameter to it to get the individual values.)
+                        // START
+                        setupUI(weatherList)
+                        // END
+                    } else {
+                        // If the response is not success then we check the response code.
+                        val sc = response.code()
+                        when (sc) {
+                            400 -> {
+                                Log.e("Error 400", "Bad Request")
+                            }
+                            404 -> {
+                                Log.e("Error 404", "Not Found")
+                            }
+                            else -> {
+                                Log.e("Error", "Generic Error")
+                            }
+                        }
+                    }
+                }
+                override fun onFailure(t: Throwable) {
+                    hideProgressDialog() // Hides the progress dialog
+                    Log.e("Errorrrrr", t.message.toString())
+                }
+            })
+        }else{
+            Toast.makeText(this@MainActivity, "NO internet connection available",
+            Toast.LENGTH_SHORT)
+        }
     }
 
     /**
@@ -263,31 +330,7 @@ class MainActivity : AppCompatActivity() {
         return navController.navigateUp(appBarConfiguration)
                 || super.onSupportNavigateUp()
     }
-    private val mLocationCallback = object : LocationCallback() {
-        override fun onLocationResult(locationResult: LocationResult) {
-            val mLastLocation: Location = locationResult.lastLocation
-            val latitude = mLastLocation.latitude
-            Log.i("Current Latitude", "$latitude")
 
-            val longitude = mLastLocation.longitude
-            Log.i("Current Longitude", "$longitude")
-
-            getLocationWeatherDetails(latitude, longitude)
-        }
-    }
-    /**
-     * Method is used to show the Custom Progress Dialog.
-     */
-    private fun showCustomProgressDialog() {
-        mProgressDialog = Dialog(this)
-
-        /*Set the screen content from a layout resource.
-        The resource will be inflated, adding all top-level views to the screen.*/
-        mProgressDialog!!.setContentView(R.layout.dialog_custom_progress)
-
-        //Start the dialog and display it on screen.
-        mProgressDialog!!.show()
-    }
 
     /**
      * This function is used to dismiss the progress dialog if it is visible to user.
